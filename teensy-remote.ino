@@ -1,4 +1,5 @@
 #include <TimerOne.h>
+#include <Wire.h>
 
 // For morse code.
 constexpr int ledPin = 6;
@@ -44,12 +45,18 @@ void remote::interrupt_handler(void)
     }
 }
 
+void i2c_handler(int);
 void setup()
 {
     pinMode(ledPin, OUTPUT); // initialize the digital pin as an output.
     pinMode(remote::pin(), OUTPUT);
+
+
     Timer1.initialize(13); // Tuned experimentally on teensy++.
     Timer1.attachInterrupt(remote::interrupt_handler);
+    Wire.begin(4); // i2c address 4
+    Wire.onReceive(i2c_handler);
+    blink_string("OK");
 }
 
 const char* morse(char ch)
@@ -223,16 +230,47 @@ const char* btn_play = "1101011011110101010110110111111111111111111011010101101"
 //                        2 1  2    4 1 1 1 22                      2 1    4
 const char* btn_pause = "110101101111010101011111111111111111111110110101111";
 
+enum Command {
+    Idle = 0,
+    Pause = 1,
+    Go = 2,
+    Home = 3,
+};
+volatile char cmd = Command::Idle;
 void loop()
 {
-    blink_string("ON");
-    tx_pwm(btn_play);
+    for (;;) {
+        const char* msg = nullptr;
+        const char* blink = "ERR";
+        switch (cmd) {
+        case Command::Idle:
+            continue;
+        case Command::Home:
+            msg = btn_home;
+            blink = "HOME";
+            break;
+        case Command::Pause:
+            msg = btn_pause;
+            blink = "PAUSE";
+            break;
+        case Command::Go:
+            msg = btn_play;
+            blink = "GO";
+            break;
+        }
+        cmd = Command::Idle;
+        if (msg != nullptr) {
+            tx_pwm(msg);
+        }
+        blink_string(blink);
+    }
+    // noInterrupts();
+    // interrupts();
+}
 
-    delay(2000);
-
-    blink_string("OFF");
-    tx_pwm(btn_pause);
-
-    blink_string("WAIT");
-    delay(1000);
+void i2c_handler(int bytes)
+{
+    while (Wire.available()) {
+        cmd = Wire.read();
+    }
 }
